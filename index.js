@@ -32,7 +32,7 @@ app.get("/", async (req, res) => {
 });
 
 app.post("/users", async (req, res) => {
-  console.log(req.body);
+  console.log(req.body)
   try {
     await client.connect();
     let isExists = await client
