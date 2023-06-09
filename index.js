@@ -74,7 +74,7 @@ const verifyJWT = (req, res, next) => {
 }
 
 app.post("/jwt", async (req, res) => {
-  await client.connect();
+  await client.connect()
   let userinfo = await client
     .db("summercampdb")
     .collection("users")
