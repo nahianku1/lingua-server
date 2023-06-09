@@ -96,7 +96,7 @@ app.post("/add-class", async (req, res) => {
     .collection("allclasses")
     .insertOne({
       ...req.body,
-      status: 'pending',
+      status: 'pending'
     });
 
   if (result) {
