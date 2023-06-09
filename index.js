@@ -109,21 +109,51 @@ app.post("/add-class", async (req, res) => {
     res.send(`Failed to Save`);
   }
 });
-app.get('/my-classes', async(req, res) =>{
-  await client.connect();
-  let result = await client
-    .db("summercampdb")
-    .collection("allclasses")
-    .find({
-      email:req.body.email
-    }).toArray();
+
+app.put("/approve/:id", async (req, res) => {
+  console.log(req.params.id);
+  try {
+    await client.connect();
+    let filter = { _id: new ObjectId(req.params.id) };
+    let result = await client
+      .db("summercampdb")
+      .collection("allclasses")
+      .updateOne(filter,{
+        $set:{status:"approved"}
+      });
+  
     if (result) {
       res.send(result);
       console.log(result);
       await client.close();
     } else {
-      res.send(`Failed to Find`);
+      res.send(`Failed to Approve`);
     }
+  } catch (error) {
+    console.log(error.message);
+  }
+ 
+});
+
+app.get('/my-classes', async(req, res) =>{
+  console.log(req.query.email);
+  
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("allclasses")
+      .find({
+        instructorEmail:req.query.email
+      }).toArray();
+      if (result) {
+        res.send(result);
+        console.log(result);
+        await client.close();
+      } else {
+        res.send(`Failed to Find`);
+      }
+   
+ 
 })
 
 app.listen(PORT, () => {
