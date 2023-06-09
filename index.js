@@ -78,15 +78,36 @@ app.post("/jwt", async (req, res) => {
   let userinfo = await client
     .db("summercampdb")
     .collection("users")
-    .findOne({ email: req.body.email }, { role: 1 });
+    .findOne({ email: req.body.email });
   const token = jwt.sign(
-    { email: req.body.email, role: userinfo.role },
+    { email: req.body.email, role: userinfo?.role },
     process.env.SECRET,
     { expiresIn: "1h" }
   );
   console.log(token);
-  res.send(token);
+  res.send({token, userinfo});
 });
+
+app.post("/add-class", async (req, res) => {
+  console.log(req.body);
+    await client.connect();
+  let result = await client
+    .db("summercampdb")
+    .collection("allclasses")
+    .insertOne({
+      ...req.body,
+      status: 'pending',
+    });
+
+  if (result) {
+    res.send(result);
+    console.log(result);
+    await client.close();
+  } else {
+    res.send(`Failed to Save`);
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`server is running at http://localhost:${PORT}`);
 });
