@@ -109,6 +109,22 @@ app.post("/add-class", async (req, res) => {
     res.send(`Failed to Save`);
   }
 });
+app.get('/my-classes', async(req, res) =>{
+  await client.connect();
+  let result = await client
+    .db("summercampdb")
+    .collection("allclasses")
+    .find({
+      email:req.body.email
+    }).toArray();
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Find`);
+    }
+})
 
 app.listen(PORT, () => {
   console.log(`server is running at http://localhost:${PORT}`);
