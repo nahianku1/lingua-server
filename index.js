@@ -160,6 +160,82 @@ app.put("/deny/:id", async (req, res) => {
  
 });
 
+app.put("/makeadmin/:id", async (req, res) => {
+  console.log(req.params.id);
+  try {
+    await client.connect();
+    let filter = { _id: new ObjectId(req.params.id) };
+    let result = await client
+      .db("summercampdb")
+      .collection("users")
+      .updateOne(filter,{
+        $set:{role:"admin"}
+      });
+  
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Approve`);
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+ 
+});
+
+app.put("/makeinstructor/:id", async (req, res) => {
+  console.log(req.params.id);
+  try {
+    await client.connect();
+    let filter = { _id: new ObjectId(req.params.id) };
+    let result = await client
+      .db("summercampdb")
+      .collection("users")
+      .updateOne(filter,{
+        $set:{role:"instructor"}
+      });
+  
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Approve`);
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+ 
+});
+
+app.put("/addfeedback/:id", async (req, res) => {
+  console.log(req.params.id);
+  console.log(req.body);
+  try {
+    await client.connect();
+    let filter = { _id: new ObjectId(req.params.id) };
+    let result = await client
+      .db("summercampdb")
+      .collection("allclasses")
+      .updateOne(filter,{
+        $set:{...req.body}
+      });
+  
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Approve`);
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+ 
+});
+
 app.get('/my-classes', async(req, res) =>{
   console.log(req.query.email);
   
@@ -169,6 +245,43 @@ app.get('/my-classes', async(req, res) =>{
       .collection("allclasses")
       .find({
         instructorEmail:req.query.email
+      }).toArray();
+      if (result) {
+        res.send(result);
+        console.log(result);
+        await client.close();
+      } else {
+        res.send(`Failed to Find`);
+      }
+   
+ 
+})
+
+app.get('/users', async(req, res) =>{
+  
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("users")
+      .find({
+      }).toArray();
+      if (result) {
+        res.send(result);
+        console.log(result);
+        await client.close();
+      } else {
+        res.send(`Failed to Find`);
+      }
+   
+ 
+})
+app.get('/allclasses', async(req, res) =>{
+  
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("allclasses")
+      .find({
       }).toArray();
       if (result) {
         res.send(result);
