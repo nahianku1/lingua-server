@@ -293,6 +293,25 @@ app.get('/allclasses', async(req, res) =>{
    
  
 })
+app.get('/approvedclasses', async(req, res) =>{
+  console.log('App Approved');
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("allclasses")
+      .find({
+        status: "approved",
+      }).toArray();
+      if (result) {
+        res.send(result);
+        console.log(result);
+        await client.close();
+      } else {
+        res.send(`Failed to Find`);
+      }
+   
+ 
+})
 
 app.listen(PORT, () => {
   console.log(`server is running at http://localhost:${PORT}`);
