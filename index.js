@@ -1,9 +1,10 @@
 let express = require("express");
 let cors = require("cors");
 let dotenv = require("dotenv");
-const jwt = require("jsonwebtoken");
-let app = express();
 dotenv.config();
+const jwt = require("jsonwebtoken");
+const stripe = require("stripe")(process.env.STRIPE_KEY);
+let app = express();
 
 app.use(express.json());
 app.use(
@@ -27,12 +28,27 @@ const client = new MongoClient(uri, {
   },
 });
 
+app.post("/order", async (req, res) => {
+  const { price } = req.body;
+  console.log(`ordered`);
+
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: parseFloat(price) * 100,
+    currency: "usd",
+    payment_method_types: ["card"],
+  });
+
+  res.send({
+    clientSecret: paymentIntent.client_secret,
+  });
+});
+
 app.get("/", async (req, res) => {
   res.send(`Server is running!`);
 });
 
 app.post("/users", async (req, res) => {
-  console.log(req.body)
+  console.log(req.body);
   try {
     await client.connect();
     let isExists = await client
@@ -56,25 +72,8 @@ app.post("/users", async (req, res) => {
   }
 });
 
-
-const verifyJWT = (req, res, next) => {
-  const authorization = req.headers.authorization;
-  if (!authorization) {
-    return res.status(401).send({ error: true, message: 'unauthorized access' });
-  }
-  const token = authorization.split(' ')[1];
-
-  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(401).send({ error: true, message: 'unauthorized access' })
-    }
-    req.decoded = decoded;
-    next();
-  })
-}
-
 app.post("/jwt", async (req, res) => {
-  await client.connect()
+  await client.connect();
   let userinfo = await client
     .db("summercampdb")
     .collection("users")
@@ -85,26 +84,140 @@ app.post("/jwt", async (req, res) => {
     { expiresIn: "1h" }
   );
   console.log(token);
-  res.send({token, userinfo});
+  res.send({ token, userinfo });
 });
 
 app.post("/add-class", async (req, res) => {
   console.log(req.body);
-    await client.connect();
+  await client.connect();
   let result = await client
     .db("summercampdb")
     .collection("allclasses")
     .insertOne({
       ...req.body,
-      status: 'pending',
+      status: "pending",
       enrolled: 0,
-      feedback: ''
+      feedback: "",
     });
 
   if (result) {
     res.send(result);
     console.log(result);
     await client.close();
+  } else {
+    res.send(`Failed to Save`);
+  }
+});
+app.post("/selected-class", async (req, res) => {
+  console.log(req.body);
+  let {
+    _id,
+    availableSeats,
+    className,
+    instructorEmail,
+    instructorName,
+    price,
+    photo,
+    status,
+    enrolled,
+    feedback,
+    user,
+  } = req.body;
+  await client.connect();
+  let result = await client
+    .db("summercampdb")
+    .collection("selectedclasses")
+    .insertOne({
+      availableSeats,
+      className,
+      instructorEmail,
+      instructorName,
+      price,
+      photo,
+      status,
+      enrolled,
+      feedback,
+      user,
+      classid: _id,
+    });
+
+  if (result) {
+    res.send(result);
+    console.log(result);
+    await client.close();
+  } else {
+    res.send(`Failed to Save`);
+  }
+});
+
+app.post("/enrolled-class", async (req, res) => {
+  console.log(req.body.user);
+  await client.connect();
+  let delres = await client
+    .db("summercampdb")
+    .collection("selectedclasses")
+    .deleteOne({
+      _id: new ObjectId(req.body._id),
+    });
+
+  if (delres) {
+    let editres = await client
+      .db("summercampdb")
+      .collection("allclasses")
+      .findOne({
+        _id: new ObjectId(req.body.classid),
+      });
+
+    console.log(198, editres);
+    let newseats = Number(editres.availableSeats) - 1;
+    let newenroll = Number(editres.enrolled) + 1;
+    console.log(205, newenroll, newseats);
+    let filter = { _id: new ObjectId(req.body.classid) };
+    let newres = await client
+      .db("summercampdb")
+      .collection("allclasses")
+      .updateOne(filter, {
+        $set: {
+          availableSeats: newseats,
+          enrolled: newenroll,
+        },
+      });
+    if (newres) {
+      let {
+        availableSeats,
+        className,
+        instructorEmail,
+        instructorName,
+        price,
+        photo,
+        status,
+        enrolled,
+        feedback,
+      } = await client
+        .db("summercampdb")
+        .collection("allclasses")
+        .findOne({
+          _id: new ObjectId(req.body.classid),
+        });
+      let result = await client
+        .db("summercampdb")
+        .collection("enrolledclasses")
+        .insertOne({
+          availableSeats,
+          className,
+          instructorEmail,
+          instructorName,
+          price,
+          photo,
+          status,
+          enrolled,
+          feedback,
+          user: req.body.user,
+        });
+      res.send(result);
+      console.log(result);
+      await client.close();
+    }
   } else {
     res.send(`Failed to Save`);
   }
@@ -118,10 +231,10 @@ app.put("/approve/:id", async (req, res) => {
     let result = await client
       .db("summercampdb")
       .collection("allclasses")
-      .updateOne(filter,{
-        $set:{status:"approved"}
+      .updateOne(filter, {
+        $set: { status: "approved" },
       });
-  
+
     if (result) {
       res.send(result);
       console.log(result);
@@ -132,7 +245,6 @@ app.put("/approve/:id", async (req, res) => {
   } catch (error) {
     console.log(error.message);
   }
- 
 });
 
 app.put("/deny/:id", async (req, res) => {
@@ -143,10 +255,10 @@ app.put("/deny/:id", async (req, res) => {
     let result = await client
       .db("summercampdb")
       .collection("allclasses")
-      .updateOne(filter,{
-        $set:{status:"denied"}
+      .updateOne(filter, {
+        $set: { status: "denied" },
       });
-  
+
     if (result) {
       res.send(result);
       console.log(result);
@@ -157,7 +269,6 @@ app.put("/deny/:id", async (req, res) => {
   } catch (error) {
     console.log(error.message);
   }
- 
 });
 
 app.put("/makeadmin/:id", async (req, res) => {
@@ -168,10 +279,10 @@ app.put("/makeadmin/:id", async (req, res) => {
     let result = await client
       .db("summercampdb")
       .collection("users")
-      .updateOne(filter,{
-        $set:{role:"admin"}
+      .updateOne(filter, {
+        $set: { role: "admin" },
       });
-  
+
     if (result) {
       res.send(result);
       console.log(result);
@@ -182,7 +293,6 @@ app.put("/makeadmin/:id", async (req, res) => {
   } catch (error) {
     console.log(error.message);
   }
- 
 });
 
 app.put("/makeinstructor/:id", async (req, res) => {
@@ -193,10 +303,10 @@ app.put("/makeinstructor/:id", async (req, res) => {
     let result = await client
       .db("summercampdb")
       .collection("users")
-      .updateOne(filter,{
-        $set:{role:"instructor"}
+      .updateOne(filter, {
+        $set: { role: "instructor" },
       });
-  
+
     if (result) {
       res.send(result);
       console.log(result);
@@ -207,7 +317,6 @@ app.put("/makeinstructor/:id", async (req, res) => {
   } catch (error) {
     console.log(error.message);
   }
- 
 });
 
 app.put("/addfeedback/:id", async (req, res) => {
@@ -219,10 +328,10 @@ app.put("/addfeedback/:id", async (req, res) => {
     let result = await client
       .db("summercampdb")
       .collection("allclasses")
-      .updateOne(filter,{
-        $set:{...req.body}
+      .updateOne(filter, {
+        $set: { ...req.body },
       });
-  
+
     if (result) {
       res.send(result);
       console.log(result);
@@ -233,85 +342,134 @@ app.put("/addfeedback/:id", async (req, res) => {
   } catch (error) {
     console.log(error.message);
   }
- 
 });
 
-app.get('/my-classes', async(req, res) =>{
-  console.log(req.query.email);
-  
+app.delete("/selecteddelete/:id", async (req, res) => {
+  console.log(req.params.id);
+  try {
     await client.connect();
+    let filter = { _id: new ObjectId(req.params.id) };
     let result = await client
       .db("summercampdb")
-      .collection("allclasses")
-      .find({
-        instructorEmail:req.query.email
-      }).toArray();
-      if (result) {
-        res.send(result);
-        console.log(result);
-        await client.close();
-      } else {
-        res.send(`Failed to Find`);
-      }
-   
- 
-})
+      .collection("selectedclasses")
+      .deleteOne(filter);
 
-app.get('/users', async(req, res) =>{
-  
-    await client.connect();
-    let result = await client
-      .db("summercampdb")
-      .collection("users")
-      .find({
-      }).toArray();
-      if (result) {
-        res.send(result);
-        console.log(result);
-        await client.close();
-      } else {
-        res.send(`Failed to Find`);
-      }
-   
- 
-})
-app.get('/allclasses', async(req, res) =>{
-  
-    await client.connect();
-    let result = await client
-      .db("summercampdb")
-      .collection("allclasses")
-      .find({
-      }).toArray();
-      if (result) {
-        res.send(result);
-        console.log(result);
-        await client.close();
-      } else {
-        res.send(`Failed to Find`);
-      }
-   
- 
-})
-app.get('/approvedclasses', async(req, res) =>{
-  console.log('App Approved');
-    await client.connect();
-    let result = await client
-      .db("summercampdb")
-      .collection("allclasses")
-      .find({
-        status: "approved",
-      }).toArray();
-      if (result) {
-        res.send(result);
-        console.log(result);
-        await client.close();
-      } else {
-        res.send(`Failed to Find`);
-      }
-   
- 
-})
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Approve`);
+    }
+  } catch (error) {
+    console.log(error.message);
+  }
+});
+
+app.get("/my-classes", async (req, res) => {
+  console.log(req.query.email);
+
+  await client.connect();
+  let result = await client
+    .db("summercampdb")
+    .collection("allclasses")
+    .find({
+      instructorEmail: req.query.email,
+    })
+    .toArray();
+  if (result) {
+    res.send(result);
+    console.log(result);
+    await client.close();
+  } else {
+    res.send(`Failed to Find`);
+  }
+});
+
+app.get("/users", async (req, res) => {
+  await client.connect();
+  let result = await client
+    .db("summercampdb")
+    .collection("users")
+    .find({})
+    .toArray();
+  if (result) {
+    res.send(result);
+    console.log(result);
+    await client.close();
+  } else {
+    res.send(`Failed to Find`);
+  }
+});
+app.get("/allclasses", async (req, res) => {
+  await client.connect();
+  let result = await client
+    .db("summercampdb")
+    .collection("allclasses")
+    .find({})
+    .toArray();
+  if (result) {
+    res.send(result);
+    console.log(result);
+    await client.close();
+  } else {
+    res.send(`Failed to Find`);
+  }
+});
+app.get("/selectedclasses", async (req, res) => {
+  console.log(req.query.email);
+  await client.connect();
+  let result = await client
+    .db("summercampdb")
+    .collection("selectedclasses")
+    .find({
+      user: req.query.email,
+    })
+    .toArray();
+  if (result) {
+    res.send(result);
+    console.log(result);
+    await client.close();
+  } else {
+    res.send(`Failed to Find`);
+  }
+});
+app.get("/enrolledclasses", async (req, res) => {
+  console.log(req.query.email);
+  await client.connect();
+  let result = await client
+    .db("summercampdb")
+    .collection("enrolledclasses")
+    .find({
+      user: req.query.email,
+    })
+    .toArray();
+  if (result) {
+    res.send(result);
+    console.log(result);
+    await client.close();
+  } else {
+    res.send(`Failed to Find`);
+  }
+});
+app.get("/approvedclasses", async (req, res) => {
+  console.log("App Approved");
+  await client.connect();
+  let result = await client
+    .db("summercampdb")
+    .collection("allclasses")
+    .find({
+      status: "approved",
+    })
+    .toArray();
+  if (result) {
+    res.send(result);
+    console.log(result);
+    await client.close();
+  } else {
+    res.send(`Failed to Find`);
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`server is running at http://localhost:${PORT}`);
