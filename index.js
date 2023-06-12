@@ -90,69 +90,134 @@ app.post("/payhistory", async (req, res) => {
 });
 
 app.post("/jwt", async (req, res) => {
-  await client.connect();
-  let userinfo = await client
-    .db("summercampdb")
-    .collection("users")
-    .findOne({ email: req.body.email });
-  const token = jwt.sign(
-    { email: req.body.email, role: userinfo?.role },
-    process.env.SECRET,
-    { expiresIn: "1h" }
-  );
-  console.log(token);
-  res.send({ token, userinfo });
+  try {
+    await client.connect();
+    let userinfo = await client
+      .db("summercampdb")
+      .collection("users")
+      .findOne({ email: req.body.email });
+    const token = jwt.sign(
+      { email: req.body.email, role: userinfo?.role },
+      process.env.SECRET,
+      { expiresIn: "1h" }
+    );
+    console.log(token);
+    res.send({ token, userinfo });
+  } catch (e) {
+    console.log(e.message);
+  }
 });
 
 app.post("/add-class", async (req, res) => {
   console.log(req.body);
-  await client.connect();
-  let result = await client
-    .db("summercampdb")
-    .collection("allclasses")
-    .insertOne({
-      ...req.body,
-      status: "pending",
-      enrolled: 0,
-      feedback: "",
-    });
+  try {
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("allclasses")
+      .insertOne({
+        ...req.body,
+        status: "pending",
+        enrolled: 0,
+        feedback: "",
+      });
 
-  if (result) {
-    res.send(result);
-    console.log(result);
-    await client.close();
-  } else {
-    res.send(`Failed to Save`);
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Save`);
+    }
+  } catch (e) {
+    console.log(e.message);
   }
 });
-app.post("/selected-class", async (req, res) => {
+
+let verifyEnrolled = async (req, res, next) => {
+  // console.log(req.body);
+  let { _id, user } = req.body;
+  try {
+    await client.connect();
+    let isEnrolled = await client
+      .db("summercampdb")
+      .collection("enrolledclasses")
+      .findOne({
+        classid: _id,
+        user: user,
+      });
+    console.log(151, isEnrolled);
+    if (isEnrolled) {
+      if (isEnrolled.classid === _id && isEnrolled.user === user) {
+        console.log(136, `Already Enrolled`);
+        res.status(220).send();
+      } else {
+        next();
+      }
+    } else {
+      next();
+    }
+  } catch (e) {
+    console.log(e.message);
+  }
+};
+
+app.post("/selected-class", verifyEnrolled, async (req, res) => {
   console.log(112, req.body);
-  let {
-    _id,
-    availableSeats,
-    className,
-    instructorEmail,
-    instructorName,
-    price,
-    photo,
-    status,
-    enrolled,
-    feedback,
-    user,
-  } = req.body;
-  await client.connect();
-  let isEnrolled = await client
-    .db("summercampdb")
-    .collection("selectedclasses")
-    .findOne({
-      classid: _id,
-    });
-  console.log(133, isEnrolled);
-  console.log(134, isEnrolled?.classid == _id);
-  if (isEnrolled) {
-    if (isEnrolled.classid === _id && isEnrolled.user === user) {
-      console.log(136, `Already Enrolled`);
-      res.status(210).send();
+  try {
+    let {
+      _id,
+      availableSeats,
+      className,
+      instructorEmail,
+      instructorName,
+      price,
+      photo,
+      status,
+      enrolled,
+      feedback,
+      user,
+    } = req.body;
+    await client.connect();
+    let isSelected = await client
+      .db("summercampdb")
+      .collection("selectedclasses")
+      .findOne({
+        classid: _id,
+        user: user,
+      });
+    console.log(133, isSelected);
+    console.log(134, isSelected?.classid == _id);
+    if (isSelected) {
+      if (isSelected.classid === _id && isSelected.user === user) {
+        console.log(136, `Already Selected`);
+        res.status(210).send();
+      } else {
+        let result = await client
+          .db("summercampdb")
+          .collection("selectedclasses")
+          .insertOne({
+            availableSeats,
+            className,
+            instructorEmail,
+            instructorName,
+            price,
+            photo,
+            status,
+            enrolled,
+            feedback,
+            user,
+            classid: _id,
+          });
+
+        if (result) {
+          res.send(result);
+          console.log(result);
+          await client.close();
+        } else {
+          res.send(`Failed to Save`);
+        }
+      }
     } else {
       let result = await client
         .db("summercampdb")
@@ -179,87 +244,46 @@ app.post("/selected-class", async (req, res) => {
         res.send(`Failed to Save`);
       }
     }
-  } else {
-    let result = await client
-      .db("summercampdb")
-      .collection("selectedclasses")
-      .insertOne({
-        availableSeats,
-        className,
-        instructorEmail,
-        instructorName,
-        price,
-        photo,
-        status,
-        enrolled,
-        feedback,
-        user,
-        classid: _id,
-      });
-
-    if (result) {
-      res.send(result);
-      console.log(result);
-      await client.close();
-    } else {
-      res.send(`Failed to Save`);
-    }
+  } catch (e) {
+    console.log(e.message);
   }
 });
 
 app.post("/enrolled-class", async (req, res) => {
   console.log(req.body.user);
-  await client.connect();
-  let delres = await client
-    .db("summercampdb")
-    .collection("selectedclasses")
-    .deleteOne({
-      _id: new ObjectId(req.body._id),
-    });
-
-  if (delres) {
-    let editres = await client
+  try {
+    await client.connect();
+    let delres = await client
       .db("summercampdb")
-      .collection("allclasses")
-      .findOne({
-        _id: new ObjectId(req.body.classid),
+      .collection("selectedclasses")
+      .deleteOne({
+        _id: new ObjectId(req.body._id),
       });
 
-    console.log(198, editres);
-    let newseats = Number(editres.availableSeats) - 1;
-    let newenroll = Number(editres.enrolled) + 1;
-    console.log(205, newenroll, newseats);
-    let filter = { _id: new ObjectId(req.body.classid) };
-    let newres = await client
-      .db("summercampdb")
-      .collection("allclasses")
-      .updateOne(filter, {
-        $set: {
-          availableSeats: newseats,
-          enrolled: newenroll,
-        },
-      });
-    if (newres) {
-      let {
-        availableSeats,
-        className,
-        instructorEmail,
-        instructorName,
-        price,
-        photo,
-        status,
-        enrolled,
-        feedback,
-      } = await client
+    if (delres) {
+      let editres = await client
         .db("summercampdb")
         .collection("allclasses")
         .findOne({
           _id: new ObjectId(req.body.classid),
         });
-      let result = await client
+
+      console.log(198, editres);
+      let newseats = Number(editres.availableSeats) - 1;
+      let newenroll = Number(editres.enrolled) + 1;
+      console.log(205, newenroll, newseats);
+      let filter = { _id: new ObjectId(req.body.classid) };
+      let newres = await client
         .db("summercampdb")
-        .collection("enrolledclasses")
-        .insertOne({
+        .collection("allclasses")
+        .updateOne(filter, {
+          $set: {
+            availableSeats: newseats,
+            enrolled: newenroll,
+          },
+        });
+      if (newres) {
+        let {
           availableSeats,
           className,
           instructorEmail,
@@ -269,15 +293,37 @@ app.post("/enrolled-class", async (req, res) => {
           status,
           enrolled,
           feedback,
-          user: req.body.user,
-          classid: req.body.classid,
-        });
-      res.send(result);
-      console.log(result);
-      await client.close();
+        } = await client
+          .db("summercampdb")
+          .collection("allclasses")
+          .findOne({
+            _id: new ObjectId(req.body.classid),
+          });
+        let result = await client
+          .db("summercampdb")
+          .collection("enrolledclasses")
+          .insertOne({
+            availableSeats,
+            className,
+            instructorEmail,
+            instructorName,
+            price,
+            photo,
+            status,
+            enrolled,
+            feedback,
+            user: req.body.user,
+            classid: req.body.classid,
+          });
+        res.send(result);
+        console.log(result);
+        await client.close();
+      }
+    } else {
+      res.send(`Failed to Save`);
     }
-  } else {
-    res.send(`Failed to Save`);
+  } catch (e) {
+    console.log(e.message);
   }
 });
 
@@ -426,144 +472,174 @@ app.delete("/selecteddelete/:id", async (req, res) => {
 
 app.get("/my-classes", async (req, res) => {
   console.log(req.query.email);
-
-  await client.connect();
-  let result = await client
-    .db("summercampdb")
-    .collection("allclasses")
-    .find({
-      instructorEmail: req.query.email,
-    })
-    .toArray();
-  if (result) {
-    res.send(result);
-    console.log(result);
-    await client.close();
-  } else {
-    res.send(`Failed to Find`);
+  try {
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("allclasses")
+      .find({
+        instructorEmail: req.query.email,
+      })
+      .toArray();
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Find`);
+    }
+  } catch (e) {
+    console.log(e.message);
   }
 });
 
 app.get("/users", async (req, res) => {
-  await client.connect();
-  let result = await client
-    .db("summercampdb")
-    .collection("users")
-    .find({})
-    .toArray();
-  if (result) {
-    res.send(result);
-    console.log(result);
-    await client.close();
-  } else {
-    res.send(`Failed to Find`);
+  try {
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("users")
+      .find({})
+      .toArray();
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Find`);
+    }
+  } catch (e) {
+    console.log(e.message);
   }
 });
 
 app.get("/instructor", async (req, res) => {
-  await client.connect();
-  let result = await client
-    .db("summercampdb")
-    .collection("users")
-    .find({role:'instructor'})
-    .toArray();
-  if (result) {
-    res.send(result);
-    console.log(result);
-    await client.close();
-  } else {
-    res.send(`Failed to Find`);
+  try {
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("users")
+      .find({ role: "instructor" })
+      .toArray();
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Find`);
+    }
+  } catch (e) {
+    console.log(e.message);
   }
 });
 
 app.get("/allclasses", async (req, res) => {
-  await client.connect();
-  let result = await client
-    .db("summercampdb")
-    .collection("allclasses")
-    .find({})
-    .toArray();
-  if (result) {
-    res.send(result);
-    console.log(result);
-    await client.close();
-  } else {
-    res.send(`Failed to Find`);
+  try {
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("allclasses")
+      .find({})
+      .toArray();
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Find`);
+    }
+  } catch (e) {
+    console.log(e.message);
   }
 });
 app.get("/selectedclasses", async (req, res) => {
   console.log(req.query.email);
-  await client.connect();
-  let result = await client
-    .db("summercampdb")
-    .collection("selectedclasses")
-    .find({
-      user: req.query.email,
-    })
-    .toArray();
-  if (result) {
-    res.send(result);
-    console.log(result);
-    await client.close();
-  } else {
-    res.send(`Failed to Find`);
+  try {
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("selectedclasses")
+      .find({
+        user: req.query.email,
+      })
+      .toArray();
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Find`);
+    }
+  } catch (e) {
+    console.log(e.message);
   }
 });
 
 app.get("/payhistory", async (req, res) => {
   console.log(req.query.email);
-  await client.connect();
-  let result = await client
-    .db("summercampdb")
-    .collection("payhistory")
-    .find({
-      user: req.query.email,
-    })
-    .sort({ date: -1 })
-    .toArray();
-  if (result) {
-    res.send(result);
-    console.log(result);
-    await client.close();
-  } else {
-    res.send(`Failed to Find`);
+  try {
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("payhistory")
+      .find({
+        user: req.query.email,
+      })
+      .sort({ date: -1 })
+      .toArray();
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Find`);
+    }
+  } catch (e) {
+    console.log(e.message);
   }
 });
 
 app.get("/enrolledclasses", async (req, res) => {
   console.log(req.query.email);
-  await client.connect();
-  let result = await client
-    .db("summercampdb")
-    .collection("enrolledclasses")
-    .find({
-      user: req.query.email,
-    })
-    .toArray();
-  if (result) {
-    res.send(result);
-    console.log(result);
-    await client.close();
-  } else {
-    res.send(`Failed to Find`);
+  try {
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("enrolledclasses")
+      .find({
+        user: req.query.email,
+      })
+      .toArray();
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Find`);
+    }
+  } catch (e) {
+    console.log(e.message);
   }
 });
 app.get("/approvedclasses", async (req, res) => {
-  console.log("App Approved");
-  await client.connect();
-  let result = await client
-    .db("summercampdb")
-    .collection("allclasses")
-    .find({
-      status: "approved",
-    })
-    .toArray();
-  if (result) {
-    res.send(result);
-    console.log(result);
-    await client.close();
-  } else {
-    res.send(`Failed to Find`);
+  try {
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("allclasses")
+      .find({
+        status: "approved",
+      })
+      .toArray();
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Find`);
+    }
+  } catch (e) {
+    console.log(e.message);
   }
 });
 
