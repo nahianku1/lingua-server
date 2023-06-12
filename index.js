@@ -72,6 +72,23 @@ app.post("/users", async (req, res) => {
   }
 });
 
+app.post("/payhistory", async (req, res) => {
+  console.log(req.body);
+  try {
+    await client.connect();
+    let result = await client
+      .db("summercampdb")
+      .collection("payhistory")
+      .insertOne({ ...req.body, date: new Date(Date.now()) });
+    if (result.insertedId) {
+      res.status(201).send(result.insertedId);
+    }
+    await client.close();
+  } catch (e) {
+    console.log(e);
+  }
+});
+
 app.post("/jwt", async (req, res) => {
   await client.connect();
   let userinfo = await client
@@ -109,7 +126,7 @@ app.post("/add-class", async (req, res) => {
   }
 });
 app.post("/selected-class", async (req, res) => {
-  console.log(req.body);
+  console.log(112, req.body);
   let {
     _id,
     availableSeats,
@@ -124,29 +141,69 @@ app.post("/selected-class", async (req, res) => {
     user,
   } = req.body;
   await client.connect();
-  let result = await client
+  let isEnrolled = await client
     .db("summercampdb")
     .collection("selectedclasses")
-    .insertOne({
-      availableSeats,
-      className,
-      instructorEmail,
-      instructorName,
-      price,
-      photo,
-      status,
-      enrolled,
-      feedback,
-      user,
+    .findOne({
       classid: _id,
     });
+  console.log(133, isEnrolled);
+  console.log(134, isEnrolled?.classid == _id);
+  if (isEnrolled) {
+    if (isEnrolled.classid === _id && isEnrolled.user === user) {
+      console.log(136, `Already Enrolled`);
+      res.status(210).send();
+    } else {
+      let result = await client
+        .db("summercampdb")
+        .collection("selectedclasses")
+        .insertOne({
+          availableSeats,
+          className,
+          instructorEmail,
+          instructorName,
+          price,
+          photo,
+          status,
+          enrolled,
+          feedback,
+          user,
+          classid: _id,
+        });
 
-  if (result) {
-    res.send(result);
-    console.log(result);
-    await client.close();
+      if (result) {
+        res.send(result);
+        console.log(result);
+        await client.close();
+      } else {
+        res.send(`Failed to Save`);
+      }
+    }
   } else {
-    res.send(`Failed to Save`);
+    let result = await client
+      .db("summercampdb")
+      .collection("selectedclasses")
+      .insertOne({
+        availableSeats,
+        className,
+        instructorEmail,
+        instructorName,
+        price,
+        photo,
+        status,
+        enrolled,
+        feedback,
+        user,
+        classid: _id,
+      });
+
+    if (result) {
+      res.send(result);
+      console.log(result);
+      await client.close();
+    } else {
+      res.send(`Failed to Save`);
+    }
   }
 });
 
@@ -213,6 +270,7 @@ app.post("/enrolled-class", async (req, res) => {
           enrolled,
           feedback,
           user: req.body.user,
+          classid: req.body.classid,
         });
       res.send(result);
       console.log(result);
@@ -401,6 +459,23 @@ app.get("/users", async (req, res) => {
     res.send(`Failed to Find`);
   }
 });
+
+app.get("/instructor", async (req, res) => {
+  await client.connect();
+  let result = await client
+    .db("summercampdb")
+    .collection("users")
+    .find({role:'instructor'})
+    .toArray();
+  if (result) {
+    res.send(result);
+    console.log(result);
+    await client.close();
+  } else {
+    res.send(`Failed to Find`);
+  }
+});
+
 app.get("/allclasses", async (req, res) => {
   await client.connect();
   let result = await client
@@ -434,6 +509,27 @@ app.get("/selectedclasses", async (req, res) => {
     res.send(`Failed to Find`);
   }
 });
+
+app.get("/payhistory", async (req, res) => {
+  console.log(req.query.email);
+  await client.connect();
+  let result = await client
+    .db("summercampdb")
+    .collection("payhistory")
+    .find({
+      user: req.query.email,
+    })
+    .sort({ date: -1 })
+    .toArray();
+  if (result) {
+    res.send(result);
+    console.log(result);
+    await client.close();
+  } else {
+    res.send(`Failed to Find`);
+  }
+});
+
 app.get("/enrolledclasses", async (req, res) => {
   console.log(req.query.email);
   await client.connect();
